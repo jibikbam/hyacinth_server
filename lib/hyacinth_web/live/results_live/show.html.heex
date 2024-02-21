@@ -1,0 +1,116 @@
+<header>
+  <%= case @live_action do %>
+  <% :show_session -> %>
+    <.breadcrumbs>
+      <:crumb label={nil} to={Routes.live_path(@socket, HyacinthWeb.DatasetLive.Index)}>
+        Datasets
+      </:crumb>
+      <:crumb label="Dataset" to={Routes.live_path(@socket, HyacinthWeb.DatasetLive.Show, @label_session.job.dataset)}>
+        <%= @label_session.job.dataset.name %>
+      </:crumb>
+      <:crumb label="Job" to={Routes.live_path(@socket, HyacinthWeb.LabelJobLive.Show, @label_session.job)}>
+        <%= @label_session.job.name %>
+      </:crumb>
+      <:crumb label="Session" to={Routes.live_path(@socket, HyacinthWeb.LabelSessionLive.Show, @label_session)}>
+        <%= @label_session.user.name %>'s Session
+      </:crumb>
+      <:crumb label="Results" to={Routes.results_show_path(@socket, :show_session, @label_session)}>
+        <%= @label_session.user.name %>'s Results
+      </:crumb>
+    </.breadcrumbs>
+
+    <div>
+      <h1>Results for <%= @label_session.user.name %>'s Session</h1>
+    </div>
+
+  <% :show_job -> %>
+    <.breadcrumbs>
+      <:crumb label={nil} to={Routes.live_path(@socket, HyacinthWeb.DatasetLive.Index)}>
+        Datasets
+      </:crumb>
+      <:crumb label="Dataset" to={Routes.live_path(@socket, HyacinthWeb.DatasetLive.Show, @job.dataset)}>
+        <%= @job.dataset.name %>
+      </:crumb>
+      <:crumb label="Job" to={Routes.live_path(@socket, HyacinthWeb.LabelJobLive.Show, @job)}>
+        <%= @job.name %>
+      </:crumb>
+      <:crumb label="Results" to={Routes.results_show_path(@socket, :show_job, @job)}>
+        <%= @job.name %> Results
+      </:crumb>
+    </.breadcrumbs>
+
+    <div>
+      <h1>Results for <%= @job.name %></h1>
+    </div>
+
+  <% end %>
+</header>
+
+<main class="mt-4">
+  <div>
+    <div class="filter-form-content flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <div class="flex items-center">
+          <button class={["btn border focus:z-10 !rounded-r-none", if(@columns == 2, do: "btn-dark-blue border-blue-700", else: "btn-dark-gray border-gray-600")]} phx-click="set_columns" phx-value-columns={2}><%= 2 %></button>
+          <button class={["btn border focus:z-10 !rounded-none",   if(@columns == 4, do: "btn-dark-blue border-blue-700", else: "btn-dark-gray border-gray-600")]} phx-click="set_columns" phx-value-columns={4}><%= 4 %></button>
+          <button class={["btn border focus:z-10 !rounded-l-none", if(@columns == 8, do: "btn-dark-blue border-blue-700", else: "btn-dark-gray border-gray-600")]} phx-click="set_columns" phx-value-columns={8}><%= 8 %></button>
+        </div>
+
+        <.form let={f} for={@display_changeset} phx-change="display_form_change">
+          <p>
+            <%= select f, :order, humanize_enum(ResultsDisplayForm, :order) %>
+          </p>
+        </.form>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button class="text-btn text-btn-blue text-btn-icon" phx-click="open_modal_export_results">
+          <span>Export</span>
+          <Icons.arrow_top_right_on_square_mini />
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class={["mt-4 grid gap-4", grid_cols_class(@columns)]}>
+    <%= for {object, value} <- order_results(@display_changeset, @results_objects) do %>
+      <div>
+        <img
+          class="w-full aspect-square object-contain bg-black rounded"
+          src={Routes.image_path(@socket, :show, object.id)}
+        />
+
+        <div class="mt-2 text-center">
+          <div>
+            <span class="text-gray-400 font-medium"><%= object.name %></span>
+            <%= link "(View)", to: Routes.viewer_show_path(@socket, :new_session, dataset: @job.dataset, object: object), class: "link text-sm" %>
+          </div>
+
+          <div class="text-sm text-gray-500"><%= value %></div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</main>
+
+<%= case @modal do %>
+<% {:export_results, changeset} -> %>
+  <.modal size="xs">
+    <:header>Export Results</:header>
+
+    <div class="mt-2">
+      <.form let={f} for={changeset} phx-change="export_results_change" phx-submit="export_results_submit">
+        <div class="form-content">
+          <p>
+            <%= label f, :object_columns %>
+            <%= select f, :object_columns, humanize_enum(ExportResultsForm, :object_columns) %>
+            <%= error_tag f, :object_columns %>
+          </p>
+
+          <%= submit "Export", class: "btn btn-blue" %>
+        </div>
+      </.form>
+    </div>
+  </.modal>
+<% nil -> %>
+<% end %>

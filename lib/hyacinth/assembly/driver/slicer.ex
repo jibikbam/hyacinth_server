@@ -7,14 +7,26 @@ defmodule Hyacinth.Assembly.Driver.Slicer do
 
     @primary_key false
     embedded_schema do
+      field :input_format, Ecto.Enum, values: [:nifti, :dicom], default: :nifti
       field :orientation, Ecto.Enum, values: [:sagittal, :coronal, :axial], default: :sagittal
+      field :bit_depth, Ecto.Enum, values: [:"8bit", :"16bit"], default: :"8bit"
+      field :tone_map, Ecto.Enum, values: [:disabled, :linear], default: :linear
+      field :max_clamp_percentile, :integer, default: 99
     end
 
     @doc false
     def changeset(schema, params) do
       schema
-      |> cast(params, [:orientation])
-      |> validate_required([:orientation])
+      |> cast(params, [:input_format, :orientation, :bit_depth, :tone_map, :max_clamp_percentile])
+      |> validate_required([:input_format, :orientation, :bit_depth, :tone_map, :max_clamp_percentile])
+      |> validate_number(:max_clamp_percentile, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
+    end
+
+    @doc false
+    def parse(params) do
+      %SlicerOptions{}
+      |> changeset(params)
+      |> apply_changes()
     end
   end
 
@@ -32,9 +44,35 @@ defmodule Hyacinth.Assembly.Driver.Slicer do
     ~H"""
     <div class="form-content">
       <p>
-        <%= label @form, :orientation %>
-        <%= select @form, :orientation, Ecto.Enum.values(SlicerOptions, :orientation) %>
-        <%= error_tag @form, :orientation %>
+        <%= label @form, :input_format %>
+        <%= select @form, :input_format, Ecto.Enum.values(SlicerOptions, :input_format) %>
+        <%= error_tag @form, :input_format %>
+      </p>
+
+      <%= if Ecto.Changeset.apply_changes(@form.source).input_format == :nifti do %>
+        <p>
+          <%= label @form, :orientation %>
+          <%= select @form, :orientation, Ecto.Enum.values(SlicerOptions, :orientation) %>
+          <%= error_tag @form, :orientation %>
+        </p>
+      <% end %>
+
+      <p>
+        <%= label @form, :bit_depth %>
+        <%= select @form, :bit_depth, Ecto.Enum.values(SlicerOptions, :bit_depth) %>
+        <%= error_tag @form, :bit_depth %>
+      </p>
+
+      <p>
+        <%= label @form, :tone_map %>
+        <%= select @form, :tone_map, Ecto.Enum.values(SlicerOptions, :tone_map) %>
+        <%= error_tag @form, :tone_map %>
+      </p>
+
+      <p>
+        <%= label @form, :max_clamp_percentile %>
+        <%= number_input @form, :max_clamp_percentile %>
+        <%= error_tag @form, :max_clamp_percentile %>
       </p>
     </div>
     """
@@ -47,11 +85,17 @@ defmodule Hyacinth.Assembly.Driver.Slicer do
   def pure?, do: false
 
   @impl Driver
-  def command_args(_options, file_path) do
-    binary_path = Application.fetch_env!(:hyacinth, :python_path)
+  def command_args(options, file_path) do
+    options = SlicerOptions.parse(options)
+
+    binary_path = Application.fetch_env!(:hyacinth, :python_binary_path)
     args = [
       Application.fetch_env!(:hyacinth, :slicer_path),
       file_path,
+      Atom.to_string(options.orientation),
+      Atom.to_string(options.bit_depth),
+      Atom.to_string(options.tone_map),
+      Integer.to_string(options.max_clamp_percentile),
     ]
 
     {binary_path, args}
@@ -61,7 +105,10 @@ defmodule Hyacinth.Assembly.Driver.Slicer do
   def results_glob(_options), do: "output/*.png"
 
   @impl Driver
-  def input_format(_options), do: :nifti
+  def input_format(options) do
+    options = SlicerOptions.parse(options)
+    options.input_format
+  end
 
   @impl Driver
   def output_format(_options), do: :png

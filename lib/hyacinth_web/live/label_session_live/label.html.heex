@@ -24,55 +24,132 @@
   <div class="w-1/3 flex justify-end items-center space-x-6">
     <div class="space-x-1">
       <button class="btn btn-gray btn-icon-only" phx-click="open_modal_label_history">
-        <Icons.bookmark_mini />
+        <Icons.book_open_mini />
       </button>
-      <button class="btn btn-gray btn-icon-only" phx-click="open_modal_notes">
-        <Icons.plus_circle_mini />
-      </button>
-      <button class="btn btn-gray btn-icon-only">
-        <Icons.user_mini />
+      <button class="btn btn-gray btn-icon-only" phx-click="open_modal_keymap">
+        <Icons.information_circle_mini />
       </button>
     </div>
 
     <div class="bg-gray-700 border border-gray-500 divide-x divide-gray-500 rounded flex">
-      <div class="px-4 text-gray-300 font-mono flex items-center">0:00</div>
-      <button class="p-2 text-gray-300 hover:bg-gray-800 rounded-r transition focus:ring-4 focus:ring-gray-500 focus:outline-none">
-        <Icons.briefcase_mini />
+      <div class="px-4 text-gray-300 font-mono flex items-center">
+        <span phx-hook="Timer" id="label-timer" data-timestamp={DateTime.to_unix(@started_at)}>
+          <span phx-update="ignore" id="label-timer-display">0:00</span>
+        </span>
+      </div>
+      <button
+        class="p-2 text-gray-300 hover:bg-gray-800 rounded-r transition focus:ring-4 focus:ring-gray-500 focus:outline-none"
+        phx-click="reset_timer"
+      >
+        <Icons.refresh_mini />
       </button>
     </div>
   </div>
 </header>
 
-<main class="mt-8">
+<main class="mt-4">
   <div class="flex justify-center items-start space-x-12">
     <div class="flex space-x-6">
-      <%= for object <- @element.objects do %>
-        <div>
-          <img
-            class="w-full aspect-square object-contain bg-black rounded"
-            src={Routes.image_path(@socket, :show, object.id)}
-            style="height: calc(100vh - 16rem);"
-          />
-          <div class="mt-6 p-2 text-lg text-gray-300 font-medium text-center bg-gray-800 rounded border border-gray-700">
-            <span><%= object.name %></span>
+      <%= for {{object, label_value}, i} <- @element.objects |> Enum.zip(@object_label_options) |> Enum.with_index() do %>
+        <div class="w-full">
+          <div class="flex items-center space-x-2">
+            <div class={[
+              "flex-1 px-2 py-2 rounded border",
+              if(label_value && label_value == @current_value,
+                do: "text-gray-300 font-medium bg-blue-900 border-blue-700",
+                else: "text-gray-400 bg-gray-800 border-gray-700"
+              )
+            ]}>
+              <div class="flex items-center">
+                <Icons.photo_solid />
+                <span class="ml-2"><%= object.name %></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-2">
+            <%= case Ecto.Changeset.get_field(@viewer_select_changeset, :viewer) do %>
+            <% :basic -> %>
+              <img
+                class="w-full aspect-square object-contain bg-black rounded"
+                src={Routes.image_path(@socket, :show, object.id)}
+                style="height: calc(100vh - 16rem);"
+              />
+            <% :advanced -> %>
+              <.live_component
+                module={HyacinthWeb.ViewerLive.Viewers.AdvancedPNG}
+                object_id={object.id}
+                unique_id={"#{@element.id}-#{i}"}
+                id={"viewer-advanced-png-#{i}"}
+              />
+            <% end %>
           </div>
         </div>
       <% end %>
     </div>
 
     <div class="w-64">
-      <div class="text-sm text-gray-400 font-medium">Label Options</div>
-      <div class="mt-1 space-y-2 flex flex-col">
-        <%= for label_val <- @label_session.job.label_options do %>
-          <button
-            class={["btn btn-lg", if(@current_value == label_val, do: "btn-dark-blue", else: "btn-blue")]}
-            phx-click="set_label"
-            phx-value-label={label_val}
-          >
-            <span><%= label_val %></span>
-          </button>
-        <% end %>
+      <div>
+        <div class="text-sm text-gray-400">Instructions</div>
+        <div class="mt-1 pl-2 border-l-4 border-gray-700">
+          <div class="text-sm text-gray-300"><%= @label_session.job.prompt %></div>
+        </div>
       </div>
+
+      <div class="mt-4">
+        <div class="text-sm text-gray-400 font-medium">Label Options</div>
+        <div class="mt-1 space-y-2 flex flex-col">
+          <%= for label_value <- (LabelJobType.list_object_label_options(@label_session.job.type, @label_session.job.options) || []) ++ @label_session.job.label_options do %>
+            <button
+              class="btn btn-lg btn-icon btn-blue flex items-center"
+              phx-click="set_label"
+              phx-value-label={label_value}
+            >
+              <span>
+                <%= if label_value == @current_value do %>
+                  <span>
+                    <Icons.check_circle_solid />
+                  </span>
+                <% else %>
+                  <div class="w-6 h-6 flex justify-center items-center">
+                    <div class="w-5 h-5 rounded-full border border-black bg-black bg-opacity-10" />
+                  </div>
+                <% end %>
+              </span>
+
+              <span><%= label_value %></span>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <.form let={f} for={@viewer_select_changeset} phx-change="viewer_change">
+          <div class="form-content">
+            <p class="inline-group">
+              <%= checkbox f, :auto_next %>
+              <%= label f, :auto_next, "Auto-next" %>
+            </p>
+          </div>
+        </.form>
+      </div>
+
+      <div class="mt-6">
+        <.form let={f} for={@note_changeset} phx-change="note_change" phx-submit="note_submit">
+          <div class="form-content form-wide">
+            <p>
+              <%= label f, :text, "Notes" %>
+              <%= textarea f, :text, placeholder: "Notes are empty." %>
+              <%= error_tag f, :text, name: "Notes" %>
+            </p>
+          </div>
+
+          <div class="mt-3 flex justify-end">
+            <%= submit "Save", class: "btn btn-blue" %>
+          </div>
+        </.form>
+      </div>
+
     </div>
   </div>
 </main>
@@ -84,44 +161,81 @@
       <:header>Label History</:header>
 
       <div class="h-96 overflow-y-auto" style="height: 50vh;">
-        <div class="mt-3 border border-gray-700 rounded">
-          <table class="mt-1 w-full table text-sm text-gray-400">
-            <thead>
-              <th>Label</th>
-              <th>Timestamp</th>
-            </thead>
-            <tbody>
-              <%= for {label, i} <- Enum.with_index(@labels) do %>
-                <tr class={i == 0 && "text-blue-500 font-bold"}>
-                  <td><%= label.label_value %></td>
-                  <td><%= Calendar.strftime(label.inserted_at, "%c") %></td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </.modal>
-
-  <% :notes -> %>
-    <.modal size="sm">
-      <:header>Notes</:header>
-
-      <div class="mt-2">
-        <.form let={f} for={@notes_changeset} phx-submit="save_notes">
-          <%= textarea f, :notes, placeholder: "Add notes for this element here.",
-            class: "w-full h-64 px-2 py-1 placeholder-gray-500 resize-none
-            bg-gray-800 rounded
-            border-gray-500 hover:border-gray-300 focus:border-blue-500 focus:ring-blue-300"
-          %>
-
-          <div class="mt-4 flex justify-end space-x-2">
-            <button type="button" class="btn btn-gray" phx-click="close_modal">Cancel</button>
-            <%= submit "Save", class: "btn btn-blue" %>
+        <%= if length(@labels) == 0 do %>
+          <div class="mt-12 text-gray-400 text-center">No label history yet.</div>
+        <% else %>
+          <div class="mt-3 border border-gray-700 rounded">
+            <table class="mt-1 w-full table text-sm text-gray-400">
+              <thead>
+                <th>Label</th>
+                <th>Timestamp</th>
+              </thead>
+              <tbody>
+                <%= for {label, i} <- Enum.with_index(@labels) do %>
+                  <tr class={i == 0 && "text-blue-500 font-bold"}>
+                    <td><%= label.value.option %></td>
+                    <td><%= Calendar.strftime(label.inserted_at, "%c") %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
           </div>
-        </.form>
+        <% end %>
       </div>
     </.modal>
+
+  <% :keymap -> %>
+    <.empty_modal>
+      <div class="mt-1 px-4 py-2 w-96 rounded border border-gray-700">
+        <div class="pb-2 border-b border-gray-700 flex justify-between items-center">
+          <h3>Keymap</h3>
+          <button class="-mt-2 text-3xl text-gray-500 hover:text-gray-300 transition" phx-click="close_modal">&times;</button>
+        </div>
+
+        <table class="mt-2 w-full border-separate border-spacing-y-0.5">
+          <thead class="text-sm text-gray-500 font-medium">
+            <tr>
+              <td>Key</td>
+              <td>Action</td>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="group hover:text-black hover:bg-white hover:font-medium">
+              <td class="pr-6 text-gray-400 group-hover:text-black">Left Arrow (&larr;)</td>
+              <td>Previous</td>
+            </tr>
+
+            <tr class="group hover:text-black hover:bg-white hover:font-medium">
+              <td class="pr-6 text-gray-400 group-hover:text-black">Right Arrow (&rarr;)</td>
+              <td>Next</td>
+            </tr>
+
+            <tr class="group hover:text-black hover:bg-white hover:font-medium">
+              <td class="pr-6 text-gray-400 group-hover:text-black">Number Key (1-9)</td>
+              <td>Set Label 1-9</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </.empty_modal>
+
+  <% :labeling_complete -> %>
+    <.modal size="xs">
+      <:header>Labeling Complete</:header>
+
+      <div class="mt-3 space-y-3">
+        <%= live_redirect to: Routes.results_show_path(@socket, :show_session, @label_session), class: "btn btn-lg btn-blue btn-icon" do %>
+          <Icons.rectangle_stack_solid />
+          <span>View Results</span>
+        <% end %>
+
+        <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.LabelSessionLive.Show, @label_session), class: "btn btn-lg btn-blue btn-icon" do %>
+          <Icons.arrow_left_circle_mini />
+          <span>Back to Session</span>
+        <% end %>
+      </div>
+    </.modal>
+
   <% nil -> %>
   <% end %>
 </div>

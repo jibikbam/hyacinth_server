@@ -30,6 +30,37 @@ defmodule Hyacinth.AssemblyTest do
     end
   end
 
+  describe "list_pipelines_preloaded/1" do
+    test "returns the list of pipelines created by the user" do
+      user = user_fixture()
+      pipeline_fixture(nil, user)
+      pipeline_fixture(nil, user)
+      pipeline_fixture(nil, user)
+
+      other_user = user_fixture()
+      pipeline_fixture(nil, other_user)
+      pipeline_fixture(nil, other_user)
+
+      pipelines = Assembly.list_pipelines_preloaded(user)
+      assert length(pipelines) == 3
+
+      Enum.each(pipelines, fn %Pipeline{} = p ->
+        assert Ecto.assoc_loaded?(p.creator)
+        assert Ecto.assoc_loaded?(p.transforms)
+        assert Ecto.assoc_loaded?(p.runs)
+      end)
+    end
+
+    test "returns empty list if user has not created any pipelines" do
+      user = user_fixture()
+      other_user = user_fixture()
+      pipeline_fixture(nil, other_user)
+      pipeline_fixture(nil, other_user)
+
+      assert length(Assembly.list_pipelines_preloaded(user)) == 0
+    end
+  end
+
   describe "get_pipeline!/1" do
     test "returns pipeline if it exists" do
       pipeline = pipeline_fixture()
@@ -104,14 +135,25 @@ defmodule Hyacinth.AssemblyTest do
       assert transform2.options["object_count"] == 100
     end
 
+    test "error if transforms are empty" do
+      %User{} = user = user_fixture()
+
+      params = %{
+        name: "Some Pipeline",
+        transforms: [],
+      }
+
+      {:error, %Ecto.Changeset{} = changeset} = Assembly.create_pipeline(user, params)
+      assert changeset.errors == [transforms: {"can't be empty", [validation: :required]}]
+    end
+
     test "error if transforms are out of order" do
       %User{} = user = user_fixture()
-      %Dataset{} = dataset = root_dataset_fixture()
 
       params = %{
         name: "Some Pipeline",
         transforms: [
-          %{order_index: 0, driver: :slicer, options: %{}, input_id: dataset.id},
+          %{order_index: 0, driver: :slicer, options: %{}},
           %{order_index: 2, driver: :sample, options: %{}},
         ],
       }
@@ -120,14 +162,36 @@ defmodule Hyacinth.AssemblyTest do
       assert changeset.errors == [transforms: {"can't be out of order", []}]
     end
 
-    test "error if options are invalid" do
+    test "error if inputs do not match outputs" do
       %User{} = user = user_fixture()
-      %Dataset{} = dataset = root_dataset_fixture()
 
       params = %{
         name: "Some Pipeline",
         transforms: [
-          %{order_index: 0, driver: :slicer, options: %{orientation: "invalid value"}, input_id: dataset.id},
+          %{order_index: 0, driver: :slicer, options: %{}},
+          %{order_index: 1, driver: :sample, options: %{}},
+          %{order_index: 2, driver: :dicom_to_nifti, options: %{}},
+        ]
+      }
+
+      {:error, %Ecto.Changeset{} = changeset} = Assembly.create_pipeline(user, params)
+      [tc1, tc2, tc3] = changeset.changes.transforms
+
+      assert changeset.valid? == false
+      assert tc1.valid? == true
+      assert tc2.valid? == true
+      assert tc3.valid? == false
+
+      assert tc3.errors == [driver: {"requires format %{expected}, but previous step outputs %{found}", [expected: :dicom, found: :png]}]
+    end
+
+    test "error if options are invalid" do
+      %User{} = user = user_fixture()
+
+      params = %{
+        name: "Some Pipeline",
+        transforms: [
+          %{order_index: 0, driver: :slicer, options: %{orientation: "invalid value"}},
           %{order_index: 1, driver: :sample, options: %{}},
         ],
       }
@@ -156,6 +220,207 @@ defmodule Hyacinth.AssemblyTest do
     end
   end
 
+  describe "get_input_format/1" do
+    test "returns correct input format" do
+      transforms = [
+        %Transform{order_index: 0, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 1, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.get_input_format(transforms) == :dicom
+    end
+
+    test "returns :any for pure transforms" do
+      transforms = [
+        %Transform{order_index: 0, driver: :sample, options: %{}},
+        %Transform{order_index: 1, driver: :sample, options: %{}},
+      ]
+
+      assert Assembly.get_input_format(transforms) == :any
+    end
+  end
+
+  describe "check_transform_formats/2" do
+    test "returns no errors for valid transforms" do
+      transforms = [
+        %Transform{order_index: 0, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 1, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms) == [
+        nil,
+        nil,
+      ]
+    end
+
+    test "returns no errors for valid transforms with starting_format" do
+      transforms = [
+        %Transform{order_index: 0, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 1, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms, :dicom) == [
+        nil,
+        nil,
+      ]
+    end
+
+    test "returns no errors for valid transforms starting with pure drivers" do
+      transforms = [
+        %Transform{order_index: 0, driver: :sample, options: %{}},
+        %Transform{order_index: 1, driver: :sample, options: %{}},
+        %Transform{order_index: 2, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 3, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms) == [
+        nil,
+        nil,
+        nil,
+        nil,
+      ]
+    end
+
+
+    test "returns no errors for valid transforms ending with pure driver" do
+      transforms = [
+        %Transform{order_index: 0, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 1, driver: :slicer, options: %{}},
+        %Transform{order_index: 2, driver: :sample, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms) == [
+        nil,
+        nil,
+        nil,
+      ]
+    end
+
+
+    test "returns no errors for valid transforms with pure drivers in between" do
+      transforms = [
+        %Transform{order_index: 0, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 1, driver: :sample, options: %{}},
+        %Transform{order_index: 2, driver: :sample, options: %{}},
+        %Transform{order_index: 3, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms) == [
+        nil,
+        nil,
+        nil,
+        nil,
+      ]
+    end
+
+    test "returns no errors for valid transforms with pure drivers in between and starting_format" do
+      transforms = [
+        %Transform{order_index: 0, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 1, driver: :sample, options: %{}},
+        %Transform{order_index: 2, driver: :sample, options: %{}},
+        %Transform{order_index: 3, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms, :dicom) == [
+        nil,
+        nil,
+        nil,
+        nil,
+      ]
+    end
+
+    test "returns errors for basic format mismatch" do
+      transforms = [
+        %Transform{order_index: 0, driver: :slicer, options: %{}},
+        %Transform{order_index: 1, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 2, driver: :dicom_to_nifti, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms) == [
+        nil,
+        {:dicom, :png},
+        {:dicom, :nifti},
+      ]
+    end
+
+    test "returns errors for basic format mismatch with pure drivers in between" do
+      transforms = [
+        %Transform{order_index: 0, driver: :slicer, options: %{}},
+        %Transform{order_index: 1, driver: :sample, options: %{}},
+        %Transform{order_index: 2, driver: :sample, options: %{}},
+        %Transform{order_index: 3, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 4, driver: :dicom_to_nifti, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms) == [
+        nil,
+        nil,
+        nil,
+        {:dicom, :png},
+        {:dicom, :nifti},
+      ]
+    end
+
+    test "returns errors for mismatch with starting_format" do
+      transforms = [
+        %Transform{order_index: 0, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 1, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms, :png) == [
+        {:dicom, :png},
+        nil,
+      ]
+    end
+
+    test "returns errors for mismatch with starting_format starting with pure drivers" do
+      transforms = [
+        %Transform{order_index: 0, driver: :sample, options: %{}},
+        %Transform{order_index: 1, driver: :sample, options: %{}},
+        %Transform{order_index: 2, driver: :dicom_to_nifti, options: %{}},
+        %Transform{order_index: 3, driver: :slicer, options: %{}},
+      ]
+
+      assert Assembly.check_transform_formats(transforms, :png) == [
+        nil,
+        nil,
+        {:dicom, :png},
+        nil,
+      ]
+    end
+  end
+
+  describe "list_running_pipeline_runs_preloaded" do
+    test "lists running pipeline runs" do
+      run1 = pipeline_run_fixture()
+      run2 = pipeline_run_fixture()
+      _run3 = completed_pipeline_run_fixture()
+
+      [r1, r2] = Assembly.list_running_pipeline_runs_preloaded()
+      
+      assert %PipelineRun{} = r1
+      assert r1.id == run1.id
+      assert Ecto.assoc_loaded?(r1.ran_by)
+      assert Ecto.assoc_loaded?(r1.pipeline)
+      assert Ecto.assoc_loaded?(r1.transform_runs)
+      assert Ecto.assoc_loaded?(hd(r1.transform_runs).input)
+      assert Ecto.assoc_loaded?(hd(r1.transform_runs).output)
+
+      assert %PipelineRun{} = r2
+      assert r2.id == run2.id
+      assert Ecto.assoc_loaded?(r2.ran_by)
+      assert Ecto.assoc_loaded?(r2.pipeline)
+      assert Ecto.assoc_loaded?(r2.transform_runs)
+      assert Ecto.assoc_loaded?(hd(r2.transform_runs).input)
+      assert Ecto.assoc_loaded?(hd(r2.transform_runs).output)
+    end
+
+    test "returns empty list if there are no running pipelines" do
+      completed_pipeline_run_fixture()
+      assert Assembly.list_running_pipeline_runs_preloaded() == []
+    end
+  end
+  
   describe "get_pipeline_run!/1" do
     test "gets a single pipeline run with preloads" do
       original_pr = pipeline_run_fixture()
@@ -407,6 +672,23 @@ defmodule Hyacinth.AssemblyTest do
 
       pipeline_run_id = pipeline_run.id
       assert_received {:pipeline_run_updated, {^pipeline_run_id, :running}}
+    end
+  end
+
+  describe "subscribe_all_pipeline_run_updates" do
+    test "correctly subscribes to all pipelines" do
+      %PipelineRun{} = run1 = pipeline_run_fixture()
+      %PipelineRun{} = run2 = pipeline_run_fixture()
+
+      :ok = Assembly.subscribe_all_pipeline_run_updates()
+
+      :ok = Assembly.broadcast_pipeline_run_update(run1)
+      run1_id = run1.id
+      assert_received {:pipeline_run_updated, {^run1_id, :running}}
+
+      :ok = Assembly.broadcast_pipeline_run_update(run2)
+      run2_id = run2.id
+      assert_received {:pipeline_run_updated, {^run2_id, :running}}
     end
   end
 

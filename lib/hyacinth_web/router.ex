@@ -20,16 +20,25 @@ defmodule HyacinthWeb.Router do
   scope "/", HyacinthWeb do
     pipe_through :browser
 
-    get "/", PageController, :index
-
     get "/jobs/:label_job_id/sessions/new", LabelSessionController, :new
 
     get "/object-image/:object_id", ImageController, :show
+
+    get "/export-labels/session/:session_id", ExportLabelsController, :export_session
+    get "/export-labels/job/:job_id", ExportLabelsController, :export_job
+
+    get "/export-results/session/:session_id", ExportResultsController, :export_session
+    get "/export-results/job/:job_id", ExportResultsController, :export_job
   end
 
   live_session :authenticated, on_mount: {HyacinthWeb.UserLiveAuth, :user} do
     scope "/", HyacinthWeb do
       pipe_through [:browser, :require_authenticated_user]
+
+      live "/", HomeLive.Index
+
+      live "/users", UserLive.Index
+      live "/users/:user_id", UserLive.Show
 
       live "/datasets", DatasetLive.Index
       live "/datasets/:dataset_id", DatasetLive.Show
@@ -40,11 +49,18 @@ defmodule HyacinthWeb.Router do
 
       live "/runs/:pipeline_run_id", PipelineRunLive.Show
 
+      live "/jobs", LabelJobLive.Index
       live "/jobs/new", LabelJobLive.New
       live "/jobs/:label_job_id", LabelJobLive.Show
 
       live "/sessions/:label_session_id", LabelSessionLive.Show
       live "/sessions/:label_session_id/label/:element_index", LabelSessionLive.Label
+
+      live "/results/session/:label_session_id", ResultsLive.Show, :show_session
+      live "/results/job/:label_job_id", ResultsLive.Show, :show_job
+
+      live "/viewer/new", ViewerLive.Show, :new_session
+      live "/viewer/:viewer_session_id", ViewerLive.Show, :show_session
     end
   end
 
@@ -87,31 +103,31 @@ defmodule HyacinthWeb.Router do
   scope "/", HyacinthWeb do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
-    get "/users/register", UserRegistrationController, :new
-    post "/users/register", UserRegistrationController, :create
-    get "/users/log_in", UserSessionController, :new
-    post "/users/log_in", UserSessionController, :create
-    get "/users/reset_password", UserResetPasswordController, :new
-    post "/users/reset_password", UserResetPasswordController, :create
-    get "/users/reset_password/:token", UserResetPasswordController, :edit
-    put "/users/reset_password/:token", UserResetPasswordController, :update
+    get "/account/register", UserRegistrationController, :new
+    post "/account/register", UserRegistrationController, :create
+    get "/account/log_in", UserSessionController, :new
+    post "/account/log_in", UserSessionController, :create
+    get "/account/reset_password", UserResetPasswordController, :new
+    post "/account/reset_password", UserResetPasswordController, :create
+    get "/account/reset_password/:token", UserResetPasswordController, :edit
+    put "/account/reset_password/:token", UserResetPasswordController, :update
   end
 
   scope "/", HyacinthWeb do
     pipe_through [:browser, :require_authenticated_user]
 
-    get "/users/settings", UserSettingsController, :edit
-    put "/users/settings", UserSettingsController, :update
-    get "/users/settings/confirm_email/:token", UserSettingsController, :confirm_email
+    get "/account/settings", UserSettingsController, :edit
+    put "/account/settings", UserSettingsController, :update
+    get "/account/settings/confirm_email/:token", UserSettingsController, :confirm_email
   end
 
   scope "/", HyacinthWeb do
     pipe_through [:browser]
 
-    delete "/users/log_out", UserSessionController, :delete
-    get "/users/confirm", UserConfirmationController, :new
-    post "/users/confirm", UserConfirmationController, :create
-    get "/users/confirm/:token", UserConfirmationController, :edit
-    post "/users/confirm/:token", UserConfirmationController, :update
+    delete "/account/log_out", UserSessionController, :delete
+    get "/account/confirm", UserConfirmationController, :new
+    post "/account/confirm", UserConfirmationController, :create
+    get "/account/confirm/:token", UserConfirmationController, :edit
+    post "/account/confirm/:token", UserConfirmationController, :update
   end
 end

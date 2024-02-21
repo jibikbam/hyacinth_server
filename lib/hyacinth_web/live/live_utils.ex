@@ -1,4 +1,62 @@
 defmodule HyacinthWeb.LiveUtils do
+  alias Hyacinth.Labeling.{LabelJob, LabelElement}
+
+  @doc """
+  Returns the given duration formatted as
+  a short string.
+
+  ## Examples
+
+      iex> format_time(30)
+      "30s"
+
+      iex> format_time(99)
+      "1m 39s"
+
+      iex> format_time(3601)
+      "1h"
+
+  """
+  @spec format_time(integer) :: String.t
+  def format_time(seconds) do
+    cond do
+      seconds < 60 ->
+        "#{seconds}s"
+      seconds < (60 * 60) ->
+        "#{div(seconds, 60)}m #{rem(seconds, 60)}s"
+      true ->
+        "#{div(seconds, 60 * 60)}h"
+    end
+  end
+
+  @doc """
+  Returns a display name for the elements of the given job.
+
+  ## Examples
+
+      iex> elements_name(some_job)
+      "Images"
+
+      iex> elements_name(some_other_job)
+      "Comparisons"
+
+  """
+  @spec elements_name(%LabelJob{} | [%LabelElement{}], boolean) :: String.t
+  def elements_name(elements_or_job, capitalize \\ false)
+  def elements_name(elements, capitalize) when is_list(elements) do
+    name =
+      case length(hd(elements).objects) do
+        1 -> "Images"
+        _ -> "Comparisons"
+      end
+
+    if capitalize, do: name, else: String.downcase(name)
+  end
+
+  def elements_name(%LabelJob{} = job, capitalize) do
+    elements_name(job.blueprint.elements, capitalize)
+  end
+
   @doc """
   Checks whether the given string or list of strings
   contains the given search string (case-insensitive).

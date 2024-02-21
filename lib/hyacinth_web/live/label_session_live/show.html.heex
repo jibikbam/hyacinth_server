@@ -10,49 +10,99 @@
       <%= @label_session.job.name %>
     </:crumb>
     <:crumb label="Session" to={Routes.live_path(@socket, HyacinthWeb.LabelSessionLive.Show, @label_session)}>
-      <%= @label_session.user.email %>
+      <%= @label_session.user.name %>'s Session
     </:crumb>
   </.breadcrumbs>
 
-  <div class="mt-2 flex justify-between items-start">
+  <div class="flex justify-between items-center">
     <div>
       <div class="flex items-center space-x-3">
-        <h1>Labeling Session</h1>
-        <div class="mt-2">
-          <%= case @label_session.job.label_type do %>
-            <% :classification -> %>
-              <div class="pill pill-lg pill-green">Classification Session</div>
-            <% :comparison_exhaustive -> %>
-              <div class="pill pill-lg pill-blue">Comparison Session</div>
+        <h1><%= @label_session.user.name %>'s Session</h1>
+        <div>
+          <%= cond do %>
+          <% @num_labeled == 0 -> %>
+            <div class="pill pill-lg pill-gray">Not Started</div>
+          <% @num_labeled < @num_total -> %>
+            <div class="pill pill-lg pill-yellow">In Progress</div>
+          <% true -> %>
+            <div class="pill pill-lg pill-green">Complete</div>
           <% end %>
         </div>
       </div>
 
-      <h2 class="mt-2 text-gray-400">
-        <div class="flex items-center space-x-1">
-          <span class="mt-0.5 text-gray-500"><Icons.briefcase_mini /></span>
-          <span><%= @label_session.job.name %></span>
-        </div>
+      <div class="mt-2 flex items-center space-x-2">
+        <.header_tag tooltip="Labeling Job">
+          <:icon><Icons.rectangle_stack_mini /></:icon>
+          <:text><%= @label_session.job.name %></:text>
+        </.header_tag>
 
-        <div class="flex items-center space-x-1">
-          <span class="mt-0.5 text-gray-500"><Icons.user_circle_mini /></span>
-          <span><%= @label_session.user.email %></span>
-        </div>
-      </h2>
+        <.header_tag tooltip="Session User">
+          <:icon><Icons.user_circle_mini /></:icon>
+          <:text><%= @label_session.user.name %></:text>
+        </.header_tag>
+
+        <.header_tag tooltip="Labeling Job Type">
+          <:icon><Icons.book_open_mini /></:icon>
+          <:text><%= LabelJobType.name(@label_session.job.type) %></:text>
+        </.header_tag>
+
+        <.header_tag>
+          <:icon><Icons.photo_mini /></:icon>
+          <:text><%= length(@label_session.elements) %> <%= elements_name(@label_session.elements) %></:text>
+        </.header_tag>
+      </div>
     </div>
 
     <div class="shrink-0">
-      <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.LabelSessionLive.Label, @label_session, 0), class: "btn btn-lg btn-blue btn-icon" do %>
-        <Icons.play_circle_solid />
-        <span>Start Labeling</span>
+      <%= cond do %>
+        <% @num_labeled == 0 and @current_user.id == @label_session.user_id -> %>
+          <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.LabelSessionLive.Label, @label_session, 0), class: "btn btn-lg btn-blue btn-icon" do %>
+            <Icons.play_circle_solid />
+            <span>Start Labeling</span>
+          <% end %>
+
+        <% @num_labeled < @num_total and @current_user.id == @label_session.user_id -> %>
+          <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.LabelSessionLive.Label, @label_session, 0), class: "btn btn-lg btn-yellow btn-icon" do %>
+            <Icons.play_circle_solid />
+            <span>Resume Labeling</span>
+          <% end %>
+
+        <% @num_labeled == @num_total -> %>
+          <%= live_redirect to: Routes.results_show_path(@socket, :show_session, @label_session), class: "btn btn-lg btn-green btn-icon" do %>
+            <Icons.rectangle_stack_solid />
+            <span>View Results</span>
+          <% end %>
+
+        <% true -> %>
       <% end %>
     </div>
   </div>
 </header>
 
-<main class="mt-5">
-  <div class="mt-4">
-    <div class="ml-1 text-lg text-gray-300"><%= length(@label_session.elements) %> elements</div>
+<main class="mt-4">
+  <div>
+    <div class="flex items-center space-x-2">
+      <div class="px-2 py-0.5 text-sm text-gray-300 font-medium bg-gray-800 rounded">
+        <span><%= @num_labeled %></span>
+        <span>/</span>
+        <span><%= @num_total %></span>
+      </div>
+
+      <div class="flex-1 h-1.5 bg-gray-600 rounded-full">
+        <div
+          class={["h-full rounded-full bg-opacity-70", if(@num_labeled < @num_total, do: "bg-yellow-400", else: "bg-green-400")]}
+          style={"width: #{if(@num_labeled == 0, do: 0, else: (@num_labeled / (@num_total) * 100))}%"}
+        />
+      </div>
+
+      <div>
+        <button class="text-btn text-btn-blue text-btn-icon" phx-click="open_modal_export_labels">
+          <span>Export</span>
+          <Icons.arrow_top_right_on_square_mini />
+        </button>
+      </div>
+    </div>
+
     <div class="mt-2 border border-gray-700 rounded">
       <table class="mt-1 w-full table">
         <thead>
@@ -75,7 +125,7 @@
                 <% end %>
               </td>
               <%= if length(element.labels) > 0 do %>
-                <td><%= hd(element.labels).label_value %></td>
+                <td><%= hd(element.labels).value.option %></td>
                 <td><%= Calendar.strftime(hd(element.labels).inserted_at, "%c") %></td>
               <% else %>
                 <td>-</td>
@@ -91,3 +141,9 @@
     </div>
   </div>
 </main>
+
+<%= case @modal do %>
+  <% :export_labels -> %>
+    <.live_component module={HyacinthWeb.Components.ExportLabelsModal} id="export_labels_modal" session_id={@label_session.id} />
+  <% nil -> %>
+<% end %>

@@ -9,14 +9,43 @@
   </.breadcrumbs>
 
   <div class="w-full flex justify-between items-center">
-    <h1 class="text-4xl"><%= @pipeline.name %></h1>
-    <div class="">
-      <.form let={f} for={@run_pipeline_changeset} phx-submit="run_pipeline_submit">
-        <div class="filter-form-content space-x-4">
-          <%= select f, :dataset_id, Enum.map(@datasets, &({&1.name, &1.id})), prompt: "Choose a Dataset" %>
-          <%= submit "Run Pipeline", class: "btn btn-blue" %>
+    <div>
+      <div class="flex items-center space-x-3">
+        <h1><%= @pipeline.name %></h1>
+        <div>
+          <%= if Enum.any?(@pipeline.runs, &(&1.status == :running)) do %>
+            <div class="pill pill-lg pill-yellow">Running</div>
+          <% else %>
+            <%= case length(@pipeline.runs) do %>
+            <% 0 -> %>
+              <div class="pill pill-lg pill-gray">0 runs</div>
+            <% 1 -> %>
+              <div class="pill pill-lg pill-green">1 run</div>
+            <% num_runs -> %>
+              <div class="pill pill-lg pill-green"><%= num_runs %> runs</div>
+            <% end %>
+          <% end %>
         </div>
-      </.form>
+      </div>
+
+      <div class="mt-2 flex items-center space-x-2">
+        <.header_tag tooltip="Created by">
+          <:icon><Icons.user_circle_mini /></:icon>
+          <:text><%= @pipeline.creator.name %></:text>
+        </.header_tag>
+
+        <.header_tag tooltip="Steps">
+          <:icon><Icons.rectangle_stack_mini /></:icon>
+          <:text><%= length(@pipeline.transforms) %> steps</:text>
+        </.header_tag>
+      </div>
+    </div>
+
+    <div>
+      <button class="btn btn-icon btn-blue" phx-click="open_modal_run_pipeline">
+        <Icons.plus_small_solid />
+        <span>Run Pipeline</span>
+      </button>
     </div>
   </div>
 
@@ -56,88 +85,53 @@
 
       <div class="mt-4 grid grid-cols-3 gap-4">
         <%= for %PipelineRun{} = run <- filter_runs(@pipeline.runs, @run_filter_changeset) do %>
-          <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.PipelineRunLive.Show, run),
-              class: "p-2 bg-gray-800 rounded border border-gray-700 hover:border-gray-500 transition" do %>
-            <div class="flex justify-between items-start space-x-4">
-              <div class="shrink">
-                <span class="px-1 py-0.5 text-xs text-gray-400 bg-gray-700 rounded">Input</span>
-                <span class="text-sm text-gray-300 font-medium"><%= hd(run.transform_runs).input.name %></span>
-              </div>
-              <div class="shrink-0">
-                <%= case run.status do %>
-                <% :running -> %>
-                  <div class="pill pill-yellow">Running</div>
-                <% :complete -> %>
-                  <div class="pill pill-green">Complete</div>
-                <% end %>
-              </div>
-            </div>
-
-            <div class="mt-1 text-sm">
-              <span class="text-gray-500">Ran by</span>
-              <span class="text-gray-400"><%= run.ran_by.email %></span>
-            </div>
-
-            <div class="mt-2 text-sm text-gray-400">
-              <%= for tr <- run.transform_runs do %>
-                <div class="flex items-center space-x-1">
-                  <div>
-                    <%= case tr.status do %>
-                    <% :waiting -> %>
-                      <div class="text-gray-500 opacity-60">
-                        <Icons.minus_circle_mini />
-                      </div>
-                    <% :running -> %>
-                      <div class="text-yellow-400 opacity-60 animate-spin">
-                        <Icons.refresh_mini />
-                      </div>
-                    <% :complete -> %>
-                      <div class="text-green-400 opacity-40">
-                        <Icons.check_circle_mini />
-                      </div>
-                    <% end %>
-                  </div>
-                  <div>Step <%= tr.order_index + 1 %></div>
-                </div>
-              <% end %>
-            </div>
-
-            <div class="mt-3">
-              <%= if run.status == :complete do %>
-                <div class="text-gray-500 text-xs">Completed <%= Calendar.strftime(run.completed_at, "%c") %></div>
-              <% else %>
-                <div class="text-gray-500 text-xs">Started <%= Calendar.strftime(run.inserted_at, "%c") %></div>
-              <% end %>
-            </div>
-          <% end %>
+          <Cards.pipeline_run_card pipeline_run={run} socket={@socket} />
         <% end %>
       </div>
     </div>
 
   <% :steps -> %>
-    <div class="space-y-4">
-      <%= for {transform, i} <- Enum.with_index(@transforms) do %>
-        <div class="p-2 text-sm bg-gray-800 rounded border border-gray-700">
-          <h2 class="text-xl text-gray-300">Transform #<%= i + 1 %></h2>
-          <ul class="mt-2">
-            <li>
-              <span class="text-gray-400">Driver:</span>
-              <span><%= transform.driver %></span>
-            </li>
-          </ul>
-          <div class="mt-4">
-            <h3 class="text-base text-gray-400">Driver Options</h3>
-            <ul>
-              <%= for {key, value} <- transform.options do %>
-                <li>
-                  <span class="text-gray-400"><%= key %>:</span>
-                  <span><%= value %></span>
-                </li>
-              <% end %>
-            </ul>
+    <div class="space-y-6">
+      <%= for transform <- @transforms do %>
+        <div class="relative">
+          <div class="absolute top-2 -left-20">
+            <div class="w-14 h-14 text-3xl text-black font-semibold bg-gray-300 rounded-full shadow flex justify-center items-center">
+              <%= transform.order_index + 1 %>
+            </div>
           </div>
+
+          <div class="flex items-center space-x-3">
+            <h3><%= transform.driver %></h3>
+            <.driver_format_tags driver={transform.driver} options={transform.options} />
+          </div>
+
+          <div class="mt-1 card">
+            <.options_table options={transform.options} card={false} />
+          </div>
+
         </div>
       <% end %>
     </div>
   <% end %>
 </main>
+
+<%= case @modal do %>
+<% {:run_pipeline, changeset} -> %>
+<.modal>
+  <:header>Run Pipeline</:header>
+
+  <div class="mt-2">
+    <.form let={f} for={changeset} phx-change="run_pipeline_form_change" phx-submit="run_pipeline_form_submit">
+      <div class="form-content">
+        <p>
+          <%= label f, :dataset_id %>
+          <%= select f, :dataset_id, Enum.map(@datasets, &({&1.name, &1.id})), prompt: "Choose a Dataset" %>
+          <%= error_tag f, :dataset_id %>
+        </p>
+        <%= submit "Run", class: "btn btn-blue" %>
+      </div>
+    </.form>
+  </div>
+</.modal>
+<% nil -> %>
+<% end %>

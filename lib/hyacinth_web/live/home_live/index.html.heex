@@ -1,0 +1,84 @@
+<main>
+  <%= if length(@user_sessions) > 0 do %>
+    <div>
+      <div>
+        <h3>Your Labeling Sessions</h3>
+      </div>
+
+      <div class="mt-2 grid grid-cols-3 gap-4">
+        <%= for prog <- Enum.take(@user_sessions, 6) do %>
+          <Cards.label_session_progress_card progress={prog} use_job_for_header={true} socket={@socket} />
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <%= if length(@running_pipeline_runs) > 0 do %>
+    <div class="mt-8">
+      <div>
+        <h3>Running Pipelines</h3>
+      </div>
+
+      <div class="mt-2 grid grid-cols-3 gap-4">
+        <%= for run <- @running_pipeline_runs do %>
+          <Cards.pipeline_run_card pipeline_run={run} socket={@socket} />
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="mt-8 flex space-x-6">
+
+    <div class="w-1/3">
+      <div>
+        <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.DatasetLive.Index) do %>
+          <div class="text-xl text-gray-400 hover:text-blue-300 active:text-blue-400 flex items-center transition">
+            <div>Datasets</div>
+            <span class="mt-0.5 ml-0.5 opacity-70"><Icons.chevron_right_mini /></span>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="mt-2 flex flex-col space-y-4">
+        <%= for dataset_stats <- Enum.take(@datasets, 5) do %>
+          <Cards.dataset_card dataset_stats={dataset_stats} socket={@socket} />
+        <% end %>
+      </div>
+    </div>
+
+    <div class="w-1/3">
+      <div>
+        <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.PipelineLive.Index) do %>
+          <div class="text-xl text-gray-400 hover:text-blue-300 active:text-blue-400 flex items-center transition">
+            <div>Pipelines</div>
+            <span class="mt-0.5 ml-0.5 opacity-70"><Icons.chevron_right_mini /></span>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="mt-2 flex flex-col space-y-4">
+        <%= for pipeline <- Enum.take(@pipelines, 5) do %>
+          <Cards.pipeline_card pipeline={pipeline} socket={@socket} />
+        <% end %>
+      </div>
+    </div>
+
+    <div class="w-1/3">
+      <div>
+        <%= live_redirect to: Routes.live_path(@socket, HyacinthWeb.DatasetLive.Index) do %>
+          <div class="text-xl text-gray-400 hover:text-blue-300 active:text-blue-400 flex items-center transition">
+            <div>Labeling Jobs</div>
+            <span class="mt-0.5 ml-0.5 opacity-70"><Icons.chevron_right_mini /></span>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="mt-2 flex flex-col space-y-4">
+        <%= for job <- Enum.take(@jobs, 5) do %>
+          <Cards.label_job_card job={job} socket={@socket} />
+        <% end %>
+      </div>
+    </div>
+
+  </div>
+</main>

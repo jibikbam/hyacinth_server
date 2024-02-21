@@ -2,99 +2,19 @@ on: push
 
 jobs:
   unit-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: 25
-          elixir-version: 1.14
-      - run: mix deps.get
-      - run: mix test
+    uses: ./.github/workflows/unit-tests.yml
 
   integration-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: 25
-          elixir-version: 1.14
-      - name: Download dcm2niix
-        run: |
-          cd ~
-          curl -fLO https://github.com/rordenlab/dcm2niix/releases/latest/download/dcm2niix_lnx.zip
-          unzip dcm2niix_lnx.zip
-          mkdir dcm2niix_bin
-          mv dcm2niix dcm2niix_bin
-      - name: Set up slicer python
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install -r requirements.txt
-        working-directory: ./priv/drivers/python_slicer
-      - name: Generate test data
-        run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install -r requirements.txt
-          mkdir -p datasets/test_dataset
-          python generate.py 10 datasets/test_dataset
-        working-directory: ./priv/test_data
-      - name: Make storage directories
-        run: |
-          mkdir -p priv/test_storage/warehouse
-          mkdir -p priv/test_storage/transform
-      - run: mix deps.get
-      - run: MIX_ENV=test mix compile
-      - name: Run integration tests
-        run: |
-          export PATH="$PATH:$HOME/dcm2niix_bin"
-          mix test --only integration
+    uses: ./.github/workflows/integration-tests.yml
 
-  build-release-x64-centos-stream-8:
-    runs-on: ubuntu-latest
-    container:
-      image: quay.io/centos/centos:stream8
-    steps:
-      - name: Install Erlang/OTP
-        run: |
-          dnf config-manager --set-enabled powertools
-          dnf -y install epel-release epel-next-release
-          dnf -y install wget
-          wget https://packages.erlang-solutions.com/erlang-solutions-2.0-1.noarch.rpm
-          dnf -y install erlang-solutions-2.0-1.noarch.rpm
-          dnf -y install esl-erlang
-      - name: Install precompiled Elixir
-        run: |
-          dnf -y install unzip
-          wget https://github.com/elixir-lang/elixir/releases/download/v1.14.0/elixir-otp-24.zip
-          mkdir ~/elixir
-          unzip elixir-otp-24.zip -d ~/elixir
-      - name: Define en_US.UTF-8 locale
-        run: |
-          dnf -y install glibc-locale-source glibc-langpack-en
-          localedef -c -f UTF-8 -i en_US en_US.UTF-8
-      - name: Install dev tools
-        run: dnf -y install gcc make glibc-devel
-      - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Build release
-        run: |
-          export LC_ALL=en_US.UTF-8
-          export PATH="$PATH:$HOME/elixir/bin"
-          export MIX_ENV=prod
-          mix local.hex --force
-          mix local.rebar --force
-          mix deps.get --only prod
-          mix compile
-          mix assets.deploy
-          mix release
-      - name: Create release tarball
-        run: tar -cvf hyacinth-x64-centos-stream-8.tar hyacinth
-        working-directory: _build/prod/rel
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: hyacinth-x64-centos-stream-8
-          path: _build/prod/rel/hyacinth-x64-centos-stream-8.tar
+  build-x64-ubuntu-2204:
+    uses: ./.github/workflows/build-x64-ubuntu-2204.yml
+
+  build-x64-macos-12:
+    uses: ./.github/workflows/build-x64-macos-12.yml
+
+  build-x64-centos-stream-8:
+    uses: ./.github/workflows/build-x64-centos-stream-8.yml
+
+  build-x64-centos-7:
+    uses: ./.github/workflows/build-x64-centos-7.yml

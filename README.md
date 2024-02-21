@@ -1,19 +1,169 @@
 # Hyacinth
 
-To start your Phoenix server:
+Hyacinth is a collaborative data management and labeling tool for medical images.
+The Hyacinth server provides a uniform and friendly interface for ingesting, transforming,
+and labeling medical images in a collaborative environment.
 
-  * Install dependencies with `mix deps.get`
-  * Create and migrate your database with `mix ecto.setup`
-  * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+https://user-images.githubusercontent.com/48926197/215347637-5f84d38d-43ce-44f9-bafe-aa02922ab585.mp4
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+Here are some things you can do with Hyacinth:
 
-Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
+* Manage large image datasets from a collaborative web app
+* Create pipelines to transform data to different formats (e.g. convert DICOM images to Nifti volumes) via a friendly interface
+* Create labeling jobs allowing multiple annotators to classify images based on provided criteria (pairwise comparison is also supported)
 
-## Learn more
+The Hyacinth web server can be run either on a local machine, or as a central
+server for collaboration. Once the server is running, you can connect via any standard web
+browser. Installation instructions can be found below.
 
-  * Official website: https://www.phoenixframework.org/
-  * Guides: https://hexdocs.pm/phoenix/overview.html
-  * Docs: https://hexdocs.pm/phoenix
-  * Forum: https://elixirforum.com/c/phoenix-forum
-  * Source: https://github.com/phoenixframework/phoenix
+## Installation
+
+First, download a build of the Hyacinth server for your OS.
+
+Builds are currently provided for the following operating systems:
+
+* Ubuntu 22.04
+* MacOS 12
+* CentOS Stream 8
+* CentOS 7
+
+### Prerequisites
+
+Hyacinth releases do not have any required dependencies, but there
+are a couple of optional dependencies that are needed to use certain features.
+
+If you want to use the built-in `slicer` driver, you will need a Python 3 installation.
+If your OS does not come with Python 3 pre-installed, you can download an installer
+from the [Python website](https://www.python.org/downloads/) or use your preferred package manager.
+
+Additionally, you will need to install the following Python packages using pip: `nibabel`, `pydicom`, and `Pillow`.
+
+If you want to use the built-in `dicom_to_nifti` driver, you will need a dcm2niix installation.
+See the [installation instructions](https://github.com/rordenlab/dcm2niix#install).
+
+## Getting Started
+
+The Hyacinth server is a packaged Elixir/Phoenix application, which can be started
+via a script included with the release. However, before starting the server for the
+first time, you need to create a database and add some data. The following steps will guide
+you through this process.
+
+1. Extract your downloaded Hyacinth release and cd inside:
+
+    ```console
+    $ tar -xzf your-hyacinth-release.tar.gz
+    $ cd hyacinth
+    ```
+
+2. Hyacinth is configured using environment variables. While not strictly necessary,
+it is convenient to save these to a config file. You can generate a default `config.env` file
+using the included `generate_config` script. When you run `source config.env`, the variables
+will be added to your environment for Hyacinth to use. If you do this in a subshell (e.g. `(source .env && ./bin/server)`),
+the variables will be passed to the server without being added to your shell environment.
+
+    Note that this command also generates a secure SECRET_KEY_BASE, which is used to encrypt user
+    sessions. You should avoid changing this value as it will log out all users.
+
+    ```console
+    $ ./bin/generate_config
+    $ mv bin/config.env .
+    ```
+
+3. The Hyacinth server uses two directories to manage data. The `warehouse` directory is used to
+store files, and the `transform` directory is used as temporary space when running pipelines.
+You can change the location of these directories via the `WAREHOUSE_PATH` and `TRANSFORM_PATH`
+environment variables in your config.
+To create these directories (matching the default config), run the following in your terminal:
+
+    ```console
+    $ mkdir -p ~/hyacinth/warehouse
+    $ mkdir -p ~/hyacinth/transform
+    ```
+
+4. The Hyacinth server uses an SQLite database to store all application data. The location of the
+database file can be configured via the `DATABASE_PATH` environment variable. To create the database, run the `migrate` script:
+
+    ```console
+    $ (source config.env && ./bin/migrate)
+    ```
+
+5. (Optional) Now that our database is ready, we can add some data. For this, we will use the `new_dataset`
+script. Hyacinth currently supports `dicom`, `nifti`, and `png` datasets. The `new_dataset` script accepts
+three arguments: the `name`, the `file type`, and the `path`.
+
+    Assuming you have some Nifti files stored under `/path/to/niftis`, the following command would create a `nifti` dataset named `MyNiftiDataset`:
+
+    ```console
+    $ source config.env
+    $ ./bin/new_dataset MyNiftiDataset nifti /path/to/niftis
+    ```
+
+6. Now we can start our server using the `server` script. To start the server, run the command below and then point your
+web browser to `localhost:4000` (the default host/port) to verify everything is working.
+
+    ```console
+    $ (source config.env && ./bin/server)
+    ```
+
+### Example Config
+
+This is an example of a default `config.env` file (as generated by the `generate_config` script - see above).
+
+```bash
+export DATABASE_PATH="~/hyacinth/hyacinth.db"
+export WAREHOUSE_PATH="~/hyacinth/warehouse"
+export TRANSFORM_PATH="~/hyacinth/transform"
+
+export PYTHON_BINARY_PATH="python"
+export DCM2NIIX_BINARY_PATH="dcm2niix"
+
+export PHX_HOST="localhost"
+export PORT="4000"
+export URL_PORT="4000"
+
+export SECRET_KEY_BASE=[YOUR RANDOM SECRET KEY BASE HERE]
+```
+
+## Developer Installation
+
+**These instructions are for software developers who wish to modify Hyacinth's code. For user
+installation instructions, see above.**
+
+### Prerequisites
+
+Hyacinth is an Elixir/Phoenix application, and an Elixir installation is required for compilation.
+See the [Elixir installation instructions](https://elixir-lang.org/install.html).
+
+## Compilation
+
+1. Clone the `hyacinth_server` repository and `cd` inside.
+
+2. (Optional) If this is your first time using Elixir, you will need to install Hex and Rebar
+(package managers for the Elixir and Erlang ecosystems, respectively) to build Hyacinth. Both
+can be installed via the `mix` build tool included with Elixir.
+
+    If you skip this step, you will be prompted to install both during step 3.
+
+    ```console
+    $ mix local.hex
+    $ mix local.rebar
+    ```
+
+3. Install Hyacinth's dependencies from Hex (the Elixir package manager).
+
+    ```console
+    $ mix deps.get
+    ```
+
+4. Create the development database and run migrations.
+
+    ```console
+    $ mix ecto.create
+    ```
+
+5. Run the Phoenix server in development mode. Once the server is running,
+you can connect via your web browser.
+
+    ```console
+    $ mix phx.server
+    ```

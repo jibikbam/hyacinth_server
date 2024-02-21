@@ -26,38 +26,65 @@ defmodule Hyacinth.Warehouse do
   end
 
   @doc """
-  Returns a list of all datasets along with
-  the number of objects and jobs each has.
-
-  Returned data is a list of tuples containing
-  `{dataset, object_count, label_job_count}`.
+  Returns the list of datasets which have
+  at least one object with the given format.
 
   ## Examples
 
-      iex> list_datasets_with_counts()
+      iex> list_datasets_with_format(:png)
+      [%Dataset{}, %Dataset{}, ...]
+
+  """
+  @spec list_datasets_with_format(atom) :: [%Dataset{}]
+  def list_datasets_with_format(format) when is_atom(format) do
+    Repo.all(
+      from d in Dataset,
+      inner_join: o in assoc(d, :objects),
+      where: o.format == ^format,
+      select: d,
+      distinct: true
+    )
+  end
+
+  defmodule DatasetStats do
+    @type t :: %__MODULE__{
+      dataset: %Dataset{},
+      num_objects: integer,
+      num_jobs: integer,
+    }
+    @enforce_keys [:dataset, :num_objects, :num_jobs]
+    defstruct @enforce_keys
+  end
+
+  @doc """
+  Returns a list of all datasets along with
+  the number of objects and jobs each has.
+
+  ## Examples
+
+      iex> list_datasets_with_stats()
       [
-        {%Dataset{...}, 100, 0},
-        {%Dataset{...}, 20, 2},
-        {%Dataset{...}, 30, 10},
-        ...
+        %DatasetStats{dataset: %Dataset{...}, num_objects: 100, num_jobs: 0},
+        %DatasetStats{dataset: %Dataset{...}, num_objects: 20, num_jobs: 2},
+        %DatasetStats{dataset: %Dataset{...}, num_objects: 30, num_jobs: 10},
       ]
 
   """
-  @spec list_datasets_with_counts() :: [{%Dataset{}, pos_integer, pos_integer}]
-  def list_datasets_with_counts do
+  @spec list_datasets_with_stats() :: [%DatasetStats{}]
+  def list_datasets_with_stats do
     Repo.all(
       from d in Dataset,
       left_join: dobj in assoc(d, :dataset_objects),
       left_join: lj in assoc(d, :jobs),
       group_by: d.id,
-      select: {d, count(dobj.id, :distinct), count(lj.id, :distinct)}
+      select: %DatasetStats{dataset: d, num_objects: count(dobj.id, :distinct), num_jobs: count(lj.id, :distinct)}
     )
   end
 
   @doc """
   Gets a single dataset.
 
-  Raises `Ecto.NoResultsError` if the Dataset does not exist.
+  Raises `Ecto.NoResultsError` if the dataset does not exist.
 
   ## Examples
 
@@ -68,7 +95,34 @@ defmodule Hyacinth.Warehouse do
       ** (Ecto.NoResultsError)
 
   """
+  @spec get_dataset!(term) :: %Dataset{}
   def get_dataset!(id), do: Repo.get!(Dataset, id)
+
+  @doc """
+  Gets stats for a single dataset.
+
+  Raises `Ecto.NoResultsError` if the dataset does not exist.
+
+  ## Examples
+
+      iex> get_dataset_stats!(123)
+      %DatasetStats{...}
+
+      iex> get_dataset_stats!(456)
+      ** (Ecto.NoResultsError)
+
+  """
+  @spec get_dataset_stats!(term) :: %DatasetStats{}
+  def get_dataset_stats!(id) do
+    Repo.one!(
+      from d in Dataset,
+      where: d.id == ^id,
+      left_join: dobj in assoc(d, :dataset_objects),
+      left_join: lj in assoc(d, :jobs),
+      group_by: d.id,
+      select: %DatasetStats{dataset: d, num_objects: count(dobj.id, :distinct), num_jobs: count(lj.id, :distinct)}
+    )
+  end
 
   @doc """
   Creates a root dataset (a dataset with no parent).
